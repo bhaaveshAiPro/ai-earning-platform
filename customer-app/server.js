@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 
-import { generateText, generateImage } from "../shared/ai-engine.js";
+import { generateText, generateImage } from "./ai-engine.js";
 
 dotenv.config();
 
