@@ -1,22 +1,15 @@
 {
   "name": "admin-app",
   "version": "1.0.0",
-  "description": "",
-  "main": "server.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+  "type": "module",
+  "main": "server.js", 
+   "scripts": {
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
-    "dotenv": "^17.2.3",
-    "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.1.5"
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "mongoose": "^8.2.0"
   }
 }
