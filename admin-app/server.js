@@ -9,26 +9,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI is not set");
+}
+
 // ------------------------------
 // MongoDB connection (local)
 // ------------------------------
 let dbConnected = false;
 
-async function connectDB() {
+async function start() {
   try {
-    console.log("🌐 Using MongoDB (admin):", process.env.MONGO_URI);
-    await mongoose.connect(process.env.MONGO_URI);
-    dbConnected = true;
-    console.log("🔥 Admin backend connected to MongoDB");
+    await mongoose.connect(MONGO_URI);
+    console.log("✅ Connected to MongoDB");
   } catch (err) {
-    dbConnected = false;
-    console.log(
-      "❌ Admin MongoDB connection failed:",
-      err.code || err.message || err
-    );
+    console.error("❌ MongoDB connection failed:", err.message);
+    // Do NOT `process.exit(1)` – let the server still start
   }
+
+  const PORT = process.env.PORT || 3003;
+  app.listen(PORT, () => {
+    console.log(`🛠 Admin backend running on port ${PORT}`);
+  });
 }
-connectDB();
+
+start();
+
 
 // ------------------------------
 // Schemas & models
@@ -147,6 +154,8 @@ app.get("/admin/orders", async (req, res) => {
 
 // ------------------------------
 const PORT = process.env.PORT || 3003;
+
+
 app.listen(PORT, () => {
   console.log(`🛠️ Admin backend running on port ${PORT}`);
 });
