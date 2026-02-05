@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 const ADMIN_API =
-  process.env.NEXT_PUBLIC_ADMIN_API || "http://localhost:3003";
+  process.env.NEXT_PUBLIC_ADMIN_API || process.env.NEXT_PUBLIC_ADMIN_API;
 
 
 type User = {

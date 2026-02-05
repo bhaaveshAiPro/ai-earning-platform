@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_CUSTOMER_API || "http://localhost:3002";
-
+  process.env.NEXT_PUBLIC_CUSTOMER_API || process.env.NEXT_PUBLIC_CUSTOMER_API;
+const ORDER_ENDPOINT = `${API_BASE}/order`;
 
 type ServiceType = "content" | "image";
 
@@ -245,10 +245,13 @@ export default function Home() {
           className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl text-xs"
         >
           <h2 className="text-sm font-semibold mb-1">Try BhaavAI live</h2>
-          <p className="text-[11px] text-slate-500 mb-3">
-            This connects directly to your backend at{" "}
-            <code className="font-mono">http://localhost:3002/order</code>.
-          </p>
+          <p className="text-[10px] text-slate-500">
+            This connects directly to your backend at
+            <br />
+            <code className="font-mono text-[10px] break-all">
+              {ORDER_ENDPOINT}
+            </code>
+         </p>
 
           {/* Service selector */}
           <div className="mb-3">

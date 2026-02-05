@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 
-const API_BASE = "http://localhost:3002";
+// 👇 Use env var, but fall back to localhost for local development
+const API_BASE =
+  process.env.NEXT_PUBLIC_CUSTOMER_API || "http://localhost:3002";
 
 type Mode = "login" | "register";
 
@@ -19,8 +21,11 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const endpoint =
-        mode === "login" ? "/auth/login" : "/auth/register";
+      if (!API_BASE) {
+        throw new Error("API base URL is not configured.");
+      }
+
+      const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
@@ -149,10 +154,12 @@ export default function LoginPage() {
             {message}
           </div>
         )}
-
-        <p className="mt-4 text-[11px] text-slate-500 text-center">
-          Backend: <span className="font-mono">http://localhost:3002</span>
-        </p>
+          <p className="mt-4 text-[11px] text-slate-500 text-center">
+            Backend:{" "}
+           <span className="font-mono">
+             {API_BASE || "NOT SET"}
+           </span>
+         </p>
       </div>
     </main>
   );

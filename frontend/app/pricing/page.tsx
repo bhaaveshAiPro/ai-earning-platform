@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_CUSTOMER_API || "http://localhost:3002";
+  process.env.NEXT_PUBLIC_CUSTOMER_API || process.env.NEXT_PUBLIC_CUSTOMER_API;
   
 
 const PLANS = [
