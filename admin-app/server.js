@@ -9,32 +9,75 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// ---- CORS (allow your Vercel frontend + local dev) ----
-const allowedOrigins = [
-  "https://ai-earning-platform-psi.vercel.app",
-  "http://localhost:3000",
-];
+// ------------------------------
+// CORS (IMPORTANT: no trailing slash in origins)
+// Set CORS_ORIGINS in Railway like:
+// https://ai-earning-platform-psi.vercel.app,http://localhost:3000
+// ------------------------------
+const allowedOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: function (origin, cb) {
-      // allow requests with no origin (server-to-server, curl, etc.)
+    origin: (origin, cb) => {
+      // allow server-to-server / curl (no origin)
       if (!origin) return cb(null, true);
+
+      // allow if in list
       if (allowedOrigins.includes(origin)) return cb(null, true);
-      return cb(new Error("CORS blocked: " + origin));
+
+      return cb(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "X-ADMIN-KEY"],
   })
 );
 
-app.use(express.json());
+// Railway/Browser preflight
+app.options("*", cors());
 
-// ---- Env ----
+// ------------------------------
+// Mongo
+// ------------------------------
 const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) {
-  console.error("❌ MONGO_URI is not set");
+
+async function connectMongo() {
+  if (!MONGO_URI) {
+    console.error("❌ MONGO_URI is not set");
+    return;
+  }
+  try {
+    await mongoose.connect(MONGO_URI);
+    console.log("✅ Connected to MongoDB");
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err.message);
+  }
+}
+
+// ------------------------------
+// Admin Secret Key middleware
+// ------------------------------
+function requireAdminKey(req, res, next) {
+  const key = req.header("X-ADMIN-KEY");
+  const expected = process.env.ADMIN_API_KEY;
+
+  if (!expected) {
+    console.error("❌ ADMIN_API_KEY is not set on server");
+    return res
+      .status(500)
+      .json({ status: "error", message: "Server misconfigured" });
+  }
+
+  if (!key || key !== expected) {
+    return res
+      .status(401)
+      .json({ status: "error", message: "Unauthorized (missing/invalid admin key)" });
+  }
+
+  next();
 }
 
 // ------------------------------
@@ -90,13 +133,19 @@ const PaymentRequest =
   mongoose.model("PaymentRequest", PaymentRequestSchema);
 
 // ------------------------------
-// Routes
+// Public routes
 // ------------------------------
 app.get("/", (req, res) => {
   res.send("Admin API is running");
 });
 
-// Simple admin login (compares with env)
+// ------------------------------
+// Protected admin routes
+// Everything under /admin requires X-ADMIN-KEY
+// ------------------------------
+app.use("/admin", requireAdminKey);
+
+// Admin login (still protected by admin key + email/password)
 app.post("/admin/login", (req, res) => {
   const { email, password } = req.body;
 
@@ -176,27 +225,13 @@ app.get("/admin/orders", async (req, res) => {
 });
 
 // ------------------------------
-// Start server (ONE time)
+// Start
 // ------------------------------
-async function start() {
-  try {
-    if (MONGO_URI) {
-      await mongoose.connect(MONGO_URI);
-      console.log("✅ Connected to MongoDB");
-    } else {
-      console.log("⚠️ Starting without MongoDB (MONGO_URI missing)");
-    }
-  } catch (err) {
-    console.error("❌ MongoDB connection failed:", err.message);
-    // still start server so Railway stays up
-  }
+const PORT = process.env.PORT || 3003;
 
-  const PORT = process.env.PORT || 3003;
+(async () => {
+  await connectMongo();
   app.listen(PORT, () => {
     console.log(`🛠 Admin backend running on port ${PORT}`);
   });
-}
-
-start().catch((err) => {
-  console.error("❌ Fatal start error:", err);
-});
+})();

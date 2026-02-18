@@ -1,188 +1,130 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_CUSTOMER_API;
 
 type Mode = "login" | "register";
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const endpoint = useMemo(() => {
+    if (!API_BASE) return "";
+    return mode === "login" ? `${API_BASE}/auth/login` : `${API_BASE}/auth/register`;
+  }, [mode]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setMessage(null);
+    setMsg(null);
 
-    if (!API_BASE) {
-      setMessage(
-        "❌ NEXT_PUBLIC_CUSTOMER_API is not set. Please configure it in your environment."
-      );
-      return;
-    }
-
-    setLoading(true);
+    if (!API_BASE) return setMsg("❌ NEXT_PUBLIC_CUSTOMER_API is missing in Vercel env.");
+    if (!email.trim() || !password.trim()) return setMsg("❌ Email and password required.");
 
     try {
-      const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
+      setLoading(true);
 
-      const res = await fetch(`${API_BASE}${endpoint}`, {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok || data.status !== "ok") {
-        throw new Error(data.message || "Request failed");
+        return setMsg("❌ " + (data.message || "Request failed"));
       }
 
-      // Save user info in localStorage
-      if (typeof window !== "undefined") {
-        if (data.userId) {
-          window.localStorage.setItem("bhaavai_userId", data.userId);
-        }
-        if (data.email) {
-          window.localStorage.setItem("bhaavai_email", data.email);
-        }
-        if (data.credits !== undefined) {
-          window.localStorage.setItem(
-            "bhaavai_credits",
-            String(data.credits ?? 0)
-          );
-        }
-      }
+      // Expect backend to return user object
+      const user = data.user || data.createdUser || data;
 
-      setMessage(
-        mode === "login"
-          ? "✅ Logged in successfully. Redirecting..."
-          : "✅ Account created successfully. Redirecting..."
-      );
+      const userId = user?._id || user?.id;
+      const credits = user?.credits ?? 0;
 
-      // Redirect to home after short delay
-      setTimeout(() => {
-        if (typeof window !== "undefined") {
-          window.location.href = "/";
-        }
-      }, 1000);
+      if (!userId) return setMsg("❌ Backend did not return user id.");
+
+      localStorage.setItem("bhaavai_userId", String(userId));
+      localStorage.setItem("bhaavai_email", String(email));
+      localStorage.setItem("bhaavai_credits", String(credits));
+
+      setMsg("✅ Success. Redirecting...");
+      window.location.href = "/";
     } catch (err: any) {
-      setMessage(err.message || "Something went wrong");
+      setMsg("❌ " + (err?.message || "Something went wrong"));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-        {/* Logo / title */}
-        <div className="flex flex-col items-center mb-4">
-          <div className="h-10 w-10 rounded-xl bg-emerald-500 flex items-center justify-center text-slate-950 font-bold text-sm mb-2">
-            B
-          </div>
-          <h1 className="text-xl font-semibold">BhaavAI</h1>
-          <p className="text-xs text-slate-400 mt-1">
-            {mode === "login" ? "Log in to your account" : "Create your account"}
-          </p>
+    <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-4">
+      <div className="w-full max-w-md border border-slate-800 bg-slate-900/70 rounded-2xl p-6 shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-lg font-semibold">{mode === "login" ? "Customer Login" : "Create Account"}</h1>
+          <a href="/" className="text-xs text-slate-400 hover:text-emerald-300">Home</a>
         </div>
 
         {/* Mode switcher */}
         <div className="flex gap-2 mb-4 text-xs">
           <button
-            type="button"
-            onClick={() => {
-              setMode("login");
-              setMessage(null);
-            }}
-            className={`flex-1 rounded-full px-3 py-1.5 border transition ${
-              mode === "login"
-                ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
-                : "border-slate-700 text-slate-300 hover:bg-slate-800"
+            onClick={() => setMode("login")}
+            className={`flex-1 rounded-md py-2 border ${
+              mode === "login" ? "border-emerald-500 text-emerald-300" : "border-slate-700 text-slate-300"
             }`}
           >
             Login
           </button>
           <button
-            type="button"
-            onClick={() => {
-              setMode("register");
-              setMessage(null);
-            }}
-            className={`flex-1 rounded-full px-3 py-1.5 border transition ${
-              mode === "register"
-                ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
-                : "border-slate-700 text-slate-300 hover:bg-slate-800"
+            onClick={() => setMode("register")}
+            className={`flex-1 rounded-md py-2 border ${
+              mode === "register" ? "border-emerald-500 text-emerald-300" : "border-slate-700 text-slate-300"
             }`}
           >
             Register
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block mb-1 text-slate-200">Email</label>
+            <label className="block text-xs text-slate-300 mb-1">Email</label>
             <input
-              type="email"
-              className="w-full rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
+              type="email"
+              placeholder="you@email.com"
             />
           </div>
 
           <div>
-            <label className="block mb-1 text-slate-200">Password</label>
+            <label className="block text-xs text-slate-300 mb-1">Password</label>
             <input
-              type="password"
-              className="w-full rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="********"
-              required
+              type="password"
+              placeholder="••••••••"
             />
           </div>
 
           <button
-            type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-2 text-xs disabled:opacity-60 disabled:cursor-not-allowed transition"
+            className="w-full bg-emerald-500 text-slate-950 rounded-md py-2 text-xs font-semibold hover:bg-emerald-400 disabled:opacity-60"
           >
-            {loading
-              ? mode === "login"
-                ? "Logging in..."
-                : "Registering..."
-              : mode === "login"
-              ? "Log in"
-              : "Register"}
+            {loading ? "Working..." : mode === "login" ? "Login" : "Register"}
           </button>
+
+          {msg && <p className="text-xs text-slate-300">{msg}</p>}
+          <p className="text-[11px] text-slate-500">
+            API: <span className="font-mono">{API_BASE || "(missing)"}</span>
+          </p>
         </form>
-
-        {/* Message */}
-        {message && (
-          <div className="mt-3 rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-slate-200">
-            {message}
-          </div>
-        )}
-
-        {/* Backend info (for debugging) */}
-        <p className="mt-4 text-[11px] text-slate-500 text-center">
-          Backend:{" "}
-          <code className="font-mono break-all">
-            {API_BASE ? `${API_BASE}` : "NEXT_PUBLIC_CUSTOMER_API not set"}
-          </code>
-        </p>
-
-        <p className="mt-2 text-[11px] text-slate-500 text-center">
-          <a href="/" className="text-emerald-400 hover:text-emerald-300 underline">
-            ← Back to home
-          </a>
-        </p>
       </div>
     </main>
   );
