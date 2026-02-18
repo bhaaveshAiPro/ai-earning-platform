@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import PaymentInfo from "../../components/PaymentInfo";
+import PaymentInfo from "@/components/PaymentInfo";
+import PaymentRequestForm from "@/components/PaymentRequestForm";
 
 const API_BASE = process.env.NEXT_PUBLIC_CUSTOMER_API;
 
@@ -56,7 +57,7 @@ export default function PricingPage() {
           );
         }
       } catch {
-        // ignore network errors for now
+        // ignore
       } finally {
         setLoading(false);
       }
@@ -99,26 +100,20 @@ export default function PricingPage() {
             </div>
             <span className="font-semibold tracking-tight">BhaavAI</span>
             <a
-              href="/pricing"
+              href="/"
               className="ml-4 text-[11px] text-slate-400 hover:text-emerald-300"
             >
-              Pricing
-            </a>
-            <a
-              href="/profile"
-              className="ml-3 text-[11px] text-slate-400 hover:text-emerald-300"
-            >
-              Profile
+              Home
             </a>
           </div>
 
           <div className="text-[11px] text-slate-400">
             {loading ? (
-              <>Loading account…</>
+              "Loading..."
             ) : user ? (
               <>
-                Logged in as{" "}
-                <span className="text-slate-200">{user.email}</span> • Credits:{" "}
+                Logged in as <span className="text-slate-200">{user.email}</span>{" "}
+                • Credits:{" "}
                 <span className="text-emerald-300">{user.credits}</span>
               </>
             ) : (
@@ -147,12 +142,7 @@ export default function PricingPage() {
             Simple credit-based pricing.
           </h1>
           <p className="text-sm text-slate-400">
-            You pay once, we top up your credits. Your AI backend is ready
-            to serve your users 24/7.
-          </p>
-          <p className="text-[11px] text-slate-500">
-            1 credit ≈ 1 short text generation or a fraction of an image.
-            You can adjust pricing when you resell to your customers.
+            Pay once, then admin approves and credits are added.
           </p>
         </div>
 
@@ -176,12 +166,12 @@ export default function PricingPage() {
                     </span>
                   )}
                 </div>
+
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-semibold">
-                    {plan.price}
-                  </span>
+                  <span className="text-2xl font-semibold">{plan.price}</span>
                   <span className="text-xs text-slate-400">/ one-time</span>
                 </div>
+
                 <p className="text-xs text-slate-400">{plan.description}</p>
                 <p className="text-xs text-emerald-300 font-medium">
                   {plan.credits}
@@ -191,45 +181,35 @@ export default function PricingPage() {
                 </p>
               </div>
 
-              <div className="mt-4 flex flex-col gap-2">
-                <button className="w-full rounded-md bg-emerald-500 text-slate-950 font-semibold py-2 text-xs hover:bg-emerald-400">
+              <div className="mt-4">
+                <a
+                  href="#pay"
+                  className="block text-center w-full rounded-md bg-emerald-500 text-slate-950 font-semibold py-2 text-xs hover:bg-emerald-400"
+                >
                   Choose {plan.name}
-                </button>
-
-                <p className="text-[10px] text-slate-500 text-center">
-                  After payment, your credits are added manually in the admin
-                  panel.
-                </p>
+                </a>
               </div>
             </div>
           ))}
         </div>
 
-        {/* Payment info */}
-        <div className="grid md:grid-cols-[2fr,1fr] gap-6 items-start">
+        <div id="pay" className="grid md:grid-cols-[2fr,1fr] gap-6 items-start">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 text-sm">
-            <h2 className="text-base font-semibold mb-2">
-              How payments work
-            </h2>
+            <h2 className="text-base font-semibold mb-2">How payments work</h2>
             <ol className="list-decimal list-inside text-xs text-slate-300 space-y-1">
-              <li>Choose a plan (Starter / Pro / Agency).</li>
-              <li>Send payment using PayPal or bank wire.</li>
-              <li>
-                After payment is confirmed, you open the admin dashboard and
-                increase your customer&apos;s credits.
-              </li>
+              <li>Choose a plan.</li>
+              <li>Send PayPal payment.</li>
+              <li>Submit a payment request form.</li>
+              <li>Admin approves and credits are added.</li>
             </ol>
-            <p className="mt-3 text-[11px] text-slate-500">
-              Later, you can integrate automatic webhooks and fully automate
-              top-ups. For now this simple flow is enough to start making
-              money.
-            </p>
+
+            <div className="mt-4">
+              <PaymentRequestForm />
+            </div>
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-sm">
-            <h3 className="text-sm font-semibold mb-2">
-              PayPal / bank details
-            </h3>
+            <h3 className="text-sm font-semibold mb-2">PayPal details</h3>
             <PaymentInfo />
           </div>
         </div>

@@ -4,9 +4,7 @@ export default function PaymentInfo() {
   return (
     <div className="space-y-3 text-xs text-slate-200">
       <div>
-        <h4 className="font-semibold text-slate-100 mb-1">
-          PayPal (recommended)
-        </h4>
+        <h4 className="font-semibold text-slate-100 mb-1">PayPal</h4>
         <p className="text-slate-300">Send payment via PayPal to:</p>
 
         <p className="mt-1">
@@ -22,17 +20,14 @@ export default function PaymentInfo() {
       </div>
 
       <div className="border-t border-slate-800 pt-3">
-        <h4 className="font-semibold text-slate-100 mb-1">
-          Bank transfer (optional)
-        </h4>
+        <h4 className="font-semibold text-slate-100 mb-1">Bank transfer</h4>
         <p className="text-[11px] text-slate-400">
-          Bank wire: coming soon
+          Coming soon. For now use PayPal.
         </p>
       </div>
 
       <p className="mt-2 text-[11px] text-slate-500">
-        After your customer pays, you open the admin dashboard and manually
-        increase their credits.
+        After customer pays, admin approves and credits are added.
       </p>
     </div>
   );

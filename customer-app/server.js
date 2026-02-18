@@ -9,99 +9,127 @@ import { generateText, generateImage } from "./ai-engine.js";
 dotenv.config();
 
 const app = express();
-const allowedOrigins = [
-  "https://ai-earning-platform-psi.vercel.app"
-];
+app.use(express.json());
+
+// ------------------------------
+// CORS (fix Vercel ↔ Railway)
+// ------------------------------
+const allowedOrigin = process.env.CORS_ORIGIN; // e.g. https://ai-earning-platform-psi.vercel.app
 
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
-        return callback(new Error("Not allowed by CORS"), false);
-      }
-      return callback(null, true);
+    origin: (origin, cb) => {
+      // allow server-to-server / curl / postman
+      if (!origin) return cb(null, true);
+      if (!allowedOrigin) return cb(null, true);
+
+      // normalize trailing slash issue
+      const clean = (s) => String(s).replace(/\/$/, "");
+      if (clean(origin) === clean(allowedOrigin)) return cb(null, true);
+
+      return cb(new Error("CORS blocked: " + origin));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
 
-app.use(express.json());
+app.options("*", cors());
 
-// -----------------------------------
-// MongoDB connection (local)
-// -----------------------------------
-let dbConnected = false;
+// ------------------------------
+// Mongo
+// ------------------------------
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) console.error("❌ MONGO_URI is not set");
 
-async function connectDB() {
+async function connectDb() {
   try {
-    console.log("🌐 Using MongoDB:", process.env.MONGO_URI);
-    
-    await mongoose.connect(process.env.MONGO_URI);
-    
-    dbConnected = true;
-    console.log("🔥 Customer backend connected to MongoDB (cloud)");
+    await mongoose.connect(MONGO_URI);
+    console.log("✅ Connected to MongoDB");
   } catch (err) {
-    dbConnected = false;
-    console.log("⚠️ Customer MongoDB connection failed, continuing without DB:",err.code || err.message);
-    }
+    console.error("❌ MongoDB connection failed:", err.message);
+  }
 }
 
 connectDB();
 
-// -----------------------------------
-// Schemas & Models
-// -----------------------------------
-const UserSchema = new mongoose.Schema({
-  email: String,
-  password: String, // dev only (plain); later use hashing
-  role: { type: String, default: "customer" },
-  credits: { type: Number, default: 20 },
-},
-{ timestamps: true }
+// ------------------------------
+// Models
+// ------------------------------
+const UserSchema = new mongoose.Schema(
+  {
+    email: { type: String, unique: true },
+    password: String,
+    role: { type: String, default: "customer" },
+    credits: { type: Number, default: 20 },
+  },
+  { timestamps: true }
 );
 
-const OrderSchema = new mongoose.Schema({
-  userId: String,
-  service: String, // "content" | "image"
-  prompt: String,
-  result: String,
-  date: { type: Date, default: Date.now },
-});
+const OrderSchema = new mongoose.Schema(
+  {
+    userId: String,
+    service: String,
+    prompt: String,
+    result: String,
+    date: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+
+const PaymentRequestSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    email: { type: String, required: true },
+
+    plan: { type: String, required: true }, // Starter/Pro/Agency
+    amount: { type: Number, required: true },
+    currency: { type: String, default: "USD" },
+
+    method: { type: String, default: "paypal" }, // paypal | bank
+    paypalEmail: { type: String, default: "" },
+    transactionId: { type: String, default: "" },
+    note: { type: String, default: "" },
+
+    status: { type: String, default: "pending" }, // pending/approved/rejected
+    adminNote: { type: String, default: "" },
+    creditsToAdd: { type: Number, default: 0 },
+    processedAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
 
 const User = mongoose.models.User || mongoose.model("User", UserSchema);
 const Order = mongoose.models.Order || mongoose.model("Order", OrderSchema);
+const PaymentRequest =
+  mongoose.models.PaymentRequest ||
+  mongoose.model("PaymentRequest", PaymentRequestSchema);
 
-// -----------------------------------
-// Auth routes (DEV simple version)
-// -----------------------------------
+// ------------------------------
+// Routes
+// ------------------------------
+app.get("/", (req, res) => res.send("Customer API is running"));
 
-// Register new user
+// Register
 app.post("/auth/register", async (req, res) => {
   try {
-    const { email, password } = req.body;
-
+    const { email, password } = req.body || {};
     if (!email || !password) {
       return res
         .status(400)
-        .json({ status: "error", message: "email and password are required" });
+        .json({ status: "error", message: "email and password required" });
     }
 
-    const existing = await User.findOne({ email });
-    if (existing) {
+    const exists = await User.findOne({ email });
+    if (exists) {
       return res
-        .status(400)
-        .json({ status: "error", message: "User already exists" });
+        .status(409)
+        .json({ status: "error", message: "Email already registered" });
     }
 
-    const user = await User.create({
-      email,
-      password, // plain for now (dev)
-      role: "customer",
-      credits: 20,
-    });
-
+    const user = await User.create({ email, password, credits: 20 });
     return res.json({
       status: "ok",
       userId: user._id,
@@ -109,22 +137,19 @@ app.post("/auth/register", async (req, res) => {
       credits: user.credits,
     });
   } catch (err) {
-    console.error("Error in /auth/register:", err);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Internal server error" });
+    console.error("Register error:", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
   }
 });
 
-// Login existing user
+// Login
 app.post("/auth/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
-
+    const { email, password } = req.body || {};
     if (!email || !password) {
       return res
         .status(400)
-        .json({ status: "error", message: "email and password are required" });
+        .json({ status: "error", message: "email and password required" });
     }
 
     const user = await User.findOne({ email });
@@ -132,7 +157,7 @@ app.post("/auth/login", async (req, res) => {
     if (!user || user.password !== password) {
       return res
         .status(401)
-        .json({ status: "error", message: "Invalid email or password" });
+        .json({ status: "error", message: "Invalid credentials" });
     }
 
     return res.json({
@@ -142,222 +167,156 @@ app.post("/auth/login", async (req, res) => {
       credits: user.credits,
     });
   } catch (err) {
-    console.error("Error in /auth/login:", err);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Internal server error" });
+    console.error("Login error:", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
   }
 });
-// ----------------------------------------
-// Fake purchase endpoint (dev / demo only)
-// ----------------------------------------
 
-const PLAN_CREDITS = {
-  starter: 500,
-  pro: 3000,
-  agency: 15000,
-};
-
-app.post("/purchase/fake", async (req, res) => {
+// Get user
+app.get("/auth/user/:id", async (req, res) => {
   try {
-    const { userId, plan } = req.body;
-
-    if (!userId || !plan) {
+    const user = await User.findById(req.params.id).select(
+      "email credits role createdAt"
+    );
+    if (!user) {
       return res
-        .status(400)
-        .json({ status: "error", message: "userId and plan are required" });
+        .status(404)
+        .json({ status: "error", message: "User not found" });
     }
+    return res.json({ status: "ok", user });
+  } catch (err) {
+    console.error("Get user error:", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
+  }
+});
 
-    const key = String(plan).toLowerCase(); // "Starter" -> "starter"
-    const addCredits = PLAN_CREDITS[key];
-
-    if (!addCredits) {
-      return res
-        .status(400)
-        .json({ status: "error", message: "Unknown plan" });
+// Create order (demo endpoint)
+app.post("/order", async (req, res) => {
+  try {
+    const { service, prompt, userId } = req.body || {};
+    if (!service || !prompt || !userId) {
+      return res.status(400).json({
+        status: "failed",
+        message: "service, prompt, userId required",
+      });
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res
-        .status(404)
-        .json({ status: "error", message: "User not found" });
+      return res.status(404).json({ status: "failed", message: "User not found" });
+    }
+    if (user.credits <= 0) {
+      return res.status(403).json({ status: "failed", message: "No credits" });
     }
 
-    user.credits = (user.credits || 0) + addCredits;
+    // Fake result (replace with your AI logic)
+    const result =
+      service === "image"
+        ? "https://via.placeholder.com/512?text=AI+Image"
+        : `AI Response: ${prompt}`;
+
+    user.credits = Number(user.credits) - 1;
     await user.save();
 
-    console.log(
-      `💳 Fake purchase: added ${addCredits} credits (${plan}) for ${user.email}`
-    );
-
-    return res.json({
-      status: "ok",
-      message: `Added ${addCredits} credits for plan ${plan}`,
-      credits: user.credits,
-      userId: user._id,
+    const order = await Order.create({
+      userId,
+      service,
+      prompt,
+      result,
+      date: new Date(),
     });
-  } catch (err) {
-    console.error("Error in POST /purchase/fake:", err);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Internal server error" });
-  }
-});
-
-// Get user info by id (for refreshing credits on frontend)
-app.get("/auth/user/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const user = await User.findById(id);
-
-    if (!user) {
-      return res
-        .status(404)
-        .json({ status: "error", message: "User not found" });
-    }
-
-    return res.json({
-      status: "ok",
-      user: {
-        id: user._id,
-        email: user.email,
-        credits: user.credits,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error("Error in GET /auth/user/:id:", err);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Internal server error" });
-  }
-});
-// Get orders for a specific user (for profile & history)
-app.get("/orders/user/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const orders = await Order.find({ userId: id })
-      .sort({ date: -1 })
-      .limit(20); // latest 20
-
-    return res.json({
-      status: "ok",
-      orders,
-    });
-  } catch (err) {
-    console.error("Error in GET /orders/user/:id:", err);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Internal server error" });
-  }
-});
-
-
-// -----------------------------------
-// Health route
-// -----------------------------------
-app.get("/", (req, res) => {
-  res.send("Customer API is running");
-});
-
-// -----------------------------------
-// Main order route WITH credits logic
-// -----------------------------------
-app.post("/order", async (req, res) => {
-  const { service, prompt, userId } = req.body;
-
-  if (!service || !prompt) {
-    return res.status(400).json({
-      status: "error",
-      message: "service and prompt are required",
-    });
-  }
-
-  let userDoc = null;
-
-  // 1) If DB is connected and we have a userId, try to enforce credits
-  if (dbConnected && userId) {
-    try {
-      userDoc = await User.findById(userId);
-
-      if (!userDoc) {
-        return res.status(404).json({
-          status: "error",
-          message: "User not found for credits check",
-        });
-      }
-
-      if ((userDoc.credits ?? 0) <= 0) {
-        return res.status(403).json({
-          status: "error",
-          message: "No credits left for this user",
-        });
-      }
-    } catch (err) {
-      console.log(
-        "⚠️ DB error while checking credits:",
-        err.code || err.message || err
-      );
-      // If DB has an issue, continue without blocking usage
-      userDoc = null;
-    }
-  }
-
-  try {
-    let result;
-
-    if (service === "content") {
-      result = await generateText(prompt);
-    } else if (service === "image") {
-      result = await generateImage(prompt);
-    } else {
-      return res.status(400).json({
-        status: "error",
-        message: "Unknown service type",
-      });
-    }
-
-    // 2) If we have a user & DB, decrement credits and log order
-    if (dbConnected && userDoc) {
-      try {
-        userDoc.credits = (userDoc.credits || 0) - 1;
-        if (userDoc.credits < 0) userDoc.credits = 0;
-        await userDoc.save();
-
-        await Order.create({
-          userId: userDoc._id.toString(),
-          service,
-          prompt,
-          result: typeof result === "string" ? result.slice(0, 2000) : "",
-        });
-      } catch (err) {
-        console.log(
-          "⚠️ DB error while saving credits/order:",
-          err.code || err.message || err
-        );
-        // do not block success if logging fails
-      }
-    }
 
     return res.json({
       status: "completed",
       result,
+      orderId: order._id,
     });
   } catch (err) {
-    console.error("❌ Error in /order:", err);
-    return res.status(500).json({
-      status: "error",
-      message: err.message || "Internal server error",
-    });
+    console.error("Order error:", err);
+    return res.status(500).json({ status: "failed", message: "Server error" });
   }
 });
 
-// -----------------------------------
-// Start server
-// -----------------------------------
-const PORT = process.env.PORT || 3002;
-app.listen(PORT, () => {
-  console.log(`🚀 Customer API running on port ${PORT}`);
+// User order history
+app.get("/orders/user/:id", async (req, res) => {
+  try {
+    const orders = await Order.find({ userId: req.params.id })
+      .sort({ date: -1 })
+      .limit(50);
+    return res.json({ status: "ok", orders });
+  } catch (err) {
+    console.error("Orders error:", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
+  }
 });
+
+
+// Payment request (customer submits)
+app.post("/payments/request", async (req, res) => {
+  try {
+    const {
+      userId,
+      email,
+      plan,
+      amount,
+      currency,
+      method,
+      paypalEmail,
+      transactionId,
+      note,
+    } = req.body || {};
+
+    if (!userId || !email || !plan || amount === undefined) {
+      return res.status(400).json({
+        status: "error",
+        message: "userId, email, plan, amount required",
+      });
+    }
+
+    const allowedPlans = ["Starter", "Pro", "Agency"];
+    if (!allowedPlans.includes(String(plan))) {
+      return res.status(400).json({ status: "error", message: "Invalid plan" });
+    }
+
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return res.status(400).json({ status: "error", message: "Invalid amount" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ status: "error", message: "User not found" });
+    }
+
+    const pr = await PaymentRequest.create({
+      userId,
+      email,
+      plan,
+      amount: amt,
+      currency: currency || "USD",
+      method: method || "paypal",
+      paypalEmail: paypalEmail || "",
+      transactionId: transactionId || "",
+      note: note || "",
+      status: "pending",
+    });
+
+    return res.json({
+      status: "ok",
+      message: "Payment request submitted",
+      requestId: pr._id,
+    });
+  } catch (err) {
+    console.error("Payment request error:", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
+  }
+});
+
+// ------------------------------
+// Start
+// ------------------------------
+(async () => {
+  await connectDb();
+  const PORT = process.env.PORT || 3002;
+  app.listen(PORT, () => console.log("🟢 Customer API on port", PORT));
+})();
