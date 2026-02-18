@@ -9,12 +9,20 @@ import { generateText, generateImage } from "./ai-engine.js";
 dotenv.config();
 
 const app = express();
-const allowedOrigin = process.env.CORS_ORIGIN || "*";
+const allowedOrigins = [
+  "https://ai-earning-platform-psi.vercel.app"
+];
 
 app.use(
   cors({
-    origin: allowedOrigin === "*" ? true : allowedOrigin,
-    credentials: false,
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        return callback(new Error("Not allowed by CORS"), false);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
   })
 );
 
