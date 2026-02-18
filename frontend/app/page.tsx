@@ -233,15 +233,15 @@ export default function Home() {
           {/* SERVICE SELECTOR */}
           <div className="mb-3">
             <label className="block mb-1 text-slate-300">Service</label>
-            <select
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              value={service}
-              onChange={(e) => setService(e.target.value as ServiceType)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs"
-            >
-              <option value="content">Content (text)</option>
-              <option value="image">Image</option>
-            </select>
+           <select
+  className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+  value={service}
+  onChange={(e) => setService(e.target.value as ServiceType)}
+>
+  <option value="content">Content (text)</option>
+  <option value="image">Image</option>
+</select>
+
           </div>
 
           {/* PROMPT INPUT */}
