@@ -8,17 +8,15 @@ import { generateText, generateImage } from "./ai-engine.js";
 dotenv.config();
 
 const app = express();
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://ai-saa-s-platform-coral.vercel.app/",
-];
+const allowedOrigin = process.env.CORS_ORIGIN || "*";
 
 app.use(
   cors({
-    origin: allowedOrigins,
-    credentials: true,
+    origin: allowedOrigin === "*" ? true : allowedOrigin,
+    credentials: false,
   })
 );
+
 
 app.use(express.json());
 

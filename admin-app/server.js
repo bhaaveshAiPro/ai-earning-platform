@@ -6,7 +6,15 @@ import mongoose from "mongoose";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+const allowedOrigin = process.env.CORS_ORIGIN || "*";
+
+app.use(
+  cors({
+    origin: allowedOrigin === "*" ? true : allowedOrigin,
+    credentials: false,
+  })
+);
+
 app.use(express.json());
 
 // ------------------------------

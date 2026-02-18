@@ -2,9 +2,7 @@
 
 import { useState } from "react";
 
-// 👇 Use env var, but fall back to localhost for local development
-const API_BASE =
-  process.env.NEXT_PUBLIC_CUSTOMER_API || "http://localhost:3002";
+const API_BASE = process.env.NEXT_PUBLIC_CUSTOMER_API;
 
 type Mode = "login" | "register";
 
@@ -18,13 +16,17 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setMessage(null);
+
+    if (!API_BASE) {
+      setMessage(
+        "❌ NEXT_PUBLIC_CUSTOMER_API is not set. Please configure it in your environment."
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
-      if (!API_BASE) {
-        throw new Error("API base URL is not configured.");
-      }
-
       const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
@@ -39,23 +41,29 @@ export default function LoginPage() {
         throw new Error(data.message || "Request failed");
       }
 
-      // Save user info in localStorage for later use (credits + userId)
+      // Save user info in localStorage
       if (typeof window !== "undefined") {
-        window.localStorage.setItem("bhaavai_userId", data.userId);
-        window.localStorage.setItem("bhaavai_email", data.email);
-        window.localStorage.setItem(
-          "bhaavai_credits",
-          String(data.credits ?? 0)
-        );
+        if (data.userId) {
+          window.localStorage.setItem("bhaavai_userId", data.userId);
+        }
+        if (data.email) {
+          window.localStorage.setItem("bhaavai_email", data.email);
+        }
+        if (data.credits !== undefined) {
+          window.localStorage.setItem(
+            "bhaavai_credits",
+            String(data.credits ?? 0)
+          );
+        }
       }
 
       setMessage(
         mode === "login"
-          ? "Logged in successfully. Redirecting..."
-          : "Account created. Redirecting..."
+          ? "✅ Logged in successfully. Redirecting..."
+          : "✅ Account created successfully. Redirecting..."
       );
 
-      // Redirect to homepage after 1 second
+      // Redirect to home after short delay
       setTimeout(() => {
         if (typeof window !== "undefined") {
           window.location.href = "/";
@@ -71,10 +79,16 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-        <h1 className="text-xl font-semibold mb-1 text-center">BhaavAI</h1>
-        <p className="text-xs text-slate-400 mb-4 text-center">
-          {mode === "login" ? "Log in to your account" : "Create your account"}
-        </p>
+        {/* Logo / title */}
+        <div className="flex flex-col items-center mb-4">
+          <div className="h-10 w-10 rounded-xl bg-emerald-500 flex items-center justify-center text-slate-950 font-bold text-sm mb-2">
+            B
+          </div>
+          <h1 className="text-xl font-semibold">BhaavAI</h1>
+          <p className="text-xs text-slate-400 mt-1">
+            {mode === "login" ? "Log in to your account" : "Create your account"}
+          </p>
+        </div>
 
         {/* Mode switcher */}
         <div className="flex gap-2 mb-4 text-xs">
@@ -84,10 +98,10 @@ export default function LoginPage() {
               setMode("login");
               setMessage(null);
             }}
-            className={`flex-1 rounded-full px-3 py-1.5 border ${
+            className={`flex-1 rounded-full px-3 py-1.5 border transition ${
               mode === "login"
                 ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
-                : "border-slate-700 text-slate-300"
+                : "border-slate-700 text-slate-300 hover:bg-slate-800"
             }`}
           >
             Login
@@ -98,10 +112,10 @@ export default function LoginPage() {
               setMode("register");
               setMessage(null);
             }}
-            className={`flex-1 rounded-full px-3 py-1.5 border ${
+            className={`flex-1 rounded-full px-3 py-1.5 border transition ${
               mode === "register"
                 ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
-                : "border-slate-700 text-slate-300"
+                : "border-slate-700 text-slate-300 hover:bg-slate-800"
             }`}
           >
             Register
@@ -111,7 +125,7 @@ export default function LoginPage() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
           <div>
-            <label className="block mb-1">Email</label>
+            <label className="block mb-1 text-slate-200">Email</label>
             <input
               type="email"
               className="w-full rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -123,7 +137,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block mb-1">Password</label>
+            <label className="block mb-1 text-slate-200">Password</label>
             <input
               type="password"
               className="w-full rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -137,7 +151,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-2 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full rounded-md bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-2 text-xs disabled:opacity-60 disabled:cursor-not-allowed transition"
           >
             {loading
               ? mode === "login"
@@ -149,17 +163,26 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {/* Message */}
         {message && (
           <div className="mt-3 rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-slate-200">
             {message}
           </div>
         )}
-          <p className="mt-4 text-[11px] text-slate-500 text-center">
-            Backend:{" "}
-           <span className="font-mono">
-             {API_BASE || "NOT SET"}
-           </span>
-         </p>
+
+        {/* Backend info (for debugging) */}
+        <p className="mt-4 text-[11px] text-slate-500 text-center">
+          Backend:{" "}
+          <code className="font-mono break-all">
+            {API_BASE ? `${API_BASE}` : "NEXT_PUBLIC_CUSTOMER_API not set"}
+          </code>
+        </p>
+
+        <p className="mt-2 text-[11px] text-slate-500 text-center">
+          <a href="/" className="text-emerald-400 hover:text-emerald-300 underline">
+            ← Back to home
+          </a>
+        </p>
       </div>
     </main>
   );

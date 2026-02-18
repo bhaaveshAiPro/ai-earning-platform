@@ -1,346 +1,236 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import PaymentInfo from "../../components/PaymentInfo";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_CUSTOMER_API || process.env.NEXT_PUBLIC_CUSTOMER_API;
-  
+const API_BASE = process.env.NEXT_PUBLIC_CUSTOMER_API;
 
-const PLANS = [
-  {
-    name: "Starter",
-    price: "$9",
-    period: "per month",
-    credits: "500 credits / month",
-    bestFor: "Trying out BhaavAI for small projects.",
-    key: "starter",
-    highlight: false,
-    features: [
-      "500 generation credits / month",
-      "Access to text & image tools",
-      "Email support",
-      "Cancel anytime",
-    ],
-  },
-  {
-    name: "Pro",
-    price: "$29",
-    period: "per month",
-    credits: "3,000 credits / month",
-    bestFor: "Freelancers & creators selling AI services.",
-    key: "pro",
-    highlight: true,
-    features: [
-      "3,000 generation credits / month",
-      "Priority processing",
-      "Early access to new models",
-      "Basic white-label options",
-    ],
-  },
-  {
-    name: "Agency",
-    price: "$99",
-    period: "per month",
-    credits: "15,000 credits / month",
-    bestFor: "Agencies and teams with multiple clients.",
-    key: "agency",
-    highlight: false,
-    features: [
-      "15,000 credits / month",
-      "Higher rate limits",
-      "Dedicated Slack support",
-      "Custom onboarding & setup",
-    ],
-  },
-];
+type UserInfo = {
+  email: string;
+  credits: number;
+};
 
 export default function PricingPage() {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
-  const [credits, setCredits] = useState<number | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [user, setUser] = useState<UserInfo | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Load logged-in user info from localStorage
+  // Load user info from localStorage and (optionally) refresh from backend
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const id = localStorage.getItem("bhaavai_userId");
-    const mail = localStorage.getItem("bhaavai_email");
-    const creditsStr = localStorage.getItem("bhaavai_credits");
 
-    if (id) setUserId(id);
-    if (mail) setEmail(mail);
-    if (creditsStr) setCredits(Number(creditsStr));
-  }, []);
+    const id = window.localStorage.getItem("bhaavai_userId");
+    const email = window.localStorage.getItem("bhaavai_email");
+    const creditsStr = window.localStorage.getItem("bhaavai_credits");
 
-  async function handleFakePurchase(planKey: string, planName: string) {
-    if (!userId) {
-      // Not logged in -> send to login
-      window.location.href = "/login";
+    if (!id) {
+      setUser(null);
+      setLoading(false);
       return;
     }
 
-    try {
-      setStatus(null);
-      setLoadingPlan(planKey);
+    // Start with local values
+    setUser({
+      email: email || "customer",
+      credits: creditsStr ? Number(creditsStr) : 0,
+    });
 
-      const res = await fetch(`${API_BASE}/purchase/fake`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          plan: planKey, // "starter" / "pro" / "agency"
-        }),
-      });
-
-      const data = await res.json();
-      if (data.status === "ok") {
-        setStatus(
-          `✅ Fake purchase successful: ${data.message}. New credits: ${data.credits}.`
-        );
-        setCredits(data.credits);
-        if (typeof window !== "undefined") {
-          localStorage.setItem("bhaavai_credits", String(data.credits));
-        }
-      } else {
-        setStatus("❌ " + (data.message || "Purchase failed"));
-      }
-    } catch (err: any) {
-      setStatus("❌ " + (err.message || "Purchase failed"));
-    } finally {
-      setLoadingPlan(null);
+    // If no API base, stop here
+    if (!API_BASE) {
+      setLoading(false);
+      return;
     }
-  }
+
+    // Refresh from backend
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/user/${id}`);
+        const data = await res.json();
+        if (data?.status === "ok" && data.user) {
+          setUser({
+            email: data.user.email,
+            credits: data.user.credits ?? 0,
+          });
+          window.localStorage.setItem(
+            "bhaavai_credits",
+            String(data.user.credits ?? 0)
+          );
+        }
+      } catch {
+        // ignore network errors for now
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const plans = [
+    {
+      name: "Starter",
+      price: "$9",
+      description: "Test your AI SaaS idea.",
+      credits: "5,000 credits",
+      bestFor: "Solo creators and small tests",
+    },
+    {
+      name: "Pro",
+      price: "$29",
+      description: "Grow with paying customers.",
+      credits: "25,000 credits",
+      bestFor: "Freelancers and first 50+ users",
+      highlight: true,
+    },
+    {
+      name: "Agency",
+      price: "$79",
+      description: "Handle many client projects.",
+      credits: "100,000 credits",
+      bestFor: "Agencies and resellers",
+    },
+  ];
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
-      {/* Top bar */}
+      {/* Header */}
       <header className="border-b border-slate-800">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3 text-sm">
           <div className="flex items-center gap-2">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-emerald-500 flex items-center justify-center text-slate-950 font-bold text-xs">
-                B
-              </div>
-              <span className="font-semibold tracking-tight">BhaavAI</span>
-            </Link>
-            <Link
-              href="/"
+            <div className="h-7 w-7 rounded-lg bg-emerald-500 flex items-center justify-center text-slate-950 font-bold text-xs">
+              B
+            </div>
+            <span className="font-semibold tracking-tight">BhaavAI</span>
+            <a
+              href="/pricing"
               className="ml-4 text-[11px] text-slate-400 hover:text-emerald-300"
             >
-              Home
-            </Link>
-            <span className="ml-3 text-[11px] text-emerald-300">Pricing</span>
-            <Link
+              Pricing
+            </a>
+            <a
               href="/profile"
               className="ml-3 text-[11px] text-slate-400 hover:text-emerald-300"
             >
               Profile
-            </Link>
+            </a>
           </div>
 
-          <div className="flex items-center gap-3 text-[11px]">
-            {userId ? (
-              <span className="text-emerald-300">
-                {email || "Logged in"} • Credits:{" "}
-                {credits !== null ? credits : "…"}
-              </span>
+          <div className="text-[11px] text-slate-400">
+            {loading ? (
+              <>Loading account…</>
+            ) : user ? (
+              <>
+                Logged in as{" "}
+                <span className="text-slate-200">{user.email}</span> • Credits:{" "}
+                <span className="text-emerald-300">{user.credits}</span>
+              </>
             ) : (
               <>
-                <Link
+                Not logged in.{" "}
+                <a
                   href="/login"
-                  className="border border-slate-700 rounded-full px-3 py-1 hover:bg-slate-900"
+                  className="text-emerald-400 underline hover:text-emerald-300"
                 >
                   Log in
-                </Link>
-                <Link
-                  href="/login"
-                  className="bg-emerald-500 text-slate-950 rounded-full px-3 py-1 font-medium hover:bg-emerald-400"
-                >
-                  Get started
-                </Link>
+                </a>
               </>
             )}
           </div>
         </div>
       </header>
 
-      {/* Hero + plans */}
-      <section className="max-w-6xl mx-auto px-4 py-12">
-        {/* Hero text */}
-        <div className="text-center max-w-2xl mx-auto mb-8">
-          <p className="text-xs uppercase tracking-[0.25em] text-emerald-400 mb-2">
-            SIMPLE USAGE-BASED PRICING
+      {/* Main content */}
+      <section className="max-w-6xl mx-auto px-4 py-10 space-y-10">
+        {/* Hero */}
+        <div className="text-center max-w-2xl mx-auto space-y-3">
+          <p className="text-xs uppercase tracking-[0.25em] text-emerald-400">
+            PRICING
           </p>
-          <h1 className="text-3xl md:text-4xl font-semibold mb-3">
-            Choose a plan, plug in your brand,
-            <br />
-            start selling AI in a day.
+          <h1 className="text-3xl md:text-4xl font-semibold">
+            Simple credit-based pricing.
           </h1>
           <p className="text-sm text-slate-400">
-            Every plan comes with text & image generation, per-user credit
-            tracking, and an admin dashboard to manage your customers. Upgrade
-            or downgrade anytime.
+            You pay once, we top up your credits. Your AI backend is ready
+            to serve your users 24/7.
+          </p>
+          <p className="text-[11px] text-slate-500">
+            1 credit ≈ 1 short text generation or a fraction of an image.
+            You can adjust pricing when you resell to your customers.
           </p>
         </div>
 
-        {/* Dev banner */}
-        <div className="max-w-2xl mx-auto mb-6 text-[11px] text-slate-300 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3">
-          {userId ? (
-            <>
-              <div className="font-semibold mb-1">
-                Developer mode: fake purchases enabled 💳
-              </div>
-              <p className="text-slate-400">
-                You are logged in as{" "}
-                <span className="text-slate-100">{email}</span> with{" "}
-                <span className="text-emerald-300">
-                  {credits !== null ? credits : "…"}
-                </span>{" "}
-                credits. Clicking{" "}
-                <span className="font-semibold">
-                  “Add credits with this plan”
-                </span>{" "}
-                will instantly add demo credits to your account, without any
-                real payment.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="font-semibold mb-1">
-                Log in to simulate purchases
-              </div>
-              <p className="text-slate-400">
-                To test credit top-ups, first{" "}
-                <Link
-                  href="/login"
-                  className="text-emerald-300 underline hover:text-emerald-200"
-                >
-                  log in or create an account
-                </Link>
-                . Then come back here and use the fake purchase buttons.
-              </p>
-            </>
-          )}
-        </div>
-
-        {status && (
-          <div className="max-w-2xl mx-auto mb-6 text-[11px] text-slate-100 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3">
-            {status}
-          </div>
-        )}
-
-        {/* Plan cards */}
+        {/* Plans */}
         <div className="grid md:grid-cols-3 gap-5">
-          {PLANS.map((plan) => (
+          {plans.map((plan) => (
             <div
               key={plan.name}
-              className={`relative rounded-2xl border p-5 flex flex-col justify-between ${
+              className={`rounded-2xl border p-5 bg-slate-900/70 shadow-xl text-sm flex flex-col justify-between ${
                 plan.highlight
-                  ? "border-emerald-500 bg-slate-900/70 shadow-xl shadow-emerald-900/30"
-                  : "border-slate-800 bg-slate-900/40"
+                  ? "border-emerald-500/70 shadow-emerald-500/20 shadow-lg"
+                  : "border-slate-800"
               }`}
             >
-              {plan.highlight && (
-                <div className="absolute -top-3 right-4 text-[10px] px-3 py-1 rounded-full bg-emerald-500 text-slate-950 font-semibold tracking-wide">
-                  MOST POPULAR
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">{plan.name}</h2>
+                  {plan.highlight && (
+                    <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500 text-emerald-300">
+                      Most popular
+                    </span>
+                  )}
                 </div>
-              )}
-
-              <div>
-                <h2 className="text-lg font-semibold mb-1">{plan.name}</h2>
-                <p className="text-[11px] text-slate-400 mb-3">
-                  {plan.bestFor}
-                </p>
-
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span className="text-3xl font-semibold">{plan.price}</span>
-                  <span className="text-[11px] text-slate-400">
-                    {plan.period}
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-semibold">
+                    {plan.price}
                   </span>
+                  <span className="text-xs text-slate-400">/ one-time</span>
                 </div>
-                <p className="text-[11px] text-emerald-300 mb-4">
+                <p className="text-xs text-slate-400">{plan.description}</p>
+                <p className="text-xs text-emerald-300 font-medium">
                   {plan.credits}
                 </p>
-
-                <ul className="text-[11px] text-slate-300 space-y-1 mb-4">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex gap-2">
-                      <span className="mt-[2px] h-[6px] w-[6px] rounded-full bg-emerald-400" />
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
+                <p className="text-[11px] text-slate-500">
+                  Best for: {plan.bestFor}
+                </p>
               </div>
 
-              <div className="mt-2 space-y-2">
-                {/* Normal CTA (go to login / signup) */}
-                <Link
-                  href="/login"
-                  className={`block w-full text-center rounded-md py-2 text-xs font-semibold ${
-                    plan.highlight
-                      ? "bg-emerald-500 text-slate-950 hover:bg-emerald-400"
-                      : "border border-slate-700 hover:bg-slate-900"
-                  }`}
-                >
-                  Get started with {plan.name}
-                </Link>
-
-                {/* Fake purchase button (dev/demo) */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleFakePurchase(plan.key, plan.name)
-                  }
-                  disabled={loadingPlan === plan.key}
-                  className="block w-full text-center rounded-md py-2 text-[11px] font-medium border border-dashed border-emerald-500 text-emerald-300 hover:bg-slate-900 disabled:opacity-60"
-                >
-                  {loadingPlan === plan.key
-                    ? "Adding demo credits…"
-                    : "Add credits with this plan (demo)"}
+              <div className="mt-4 flex flex-col gap-2">
+                <button className="w-full rounded-md bg-emerald-500 text-slate-950 font-semibold py-2 text-xs hover:bg-emerald-400">
+                  Choose {plan.name}
                 </button>
 
                 <p className="text-[10px] text-slate-500 text-center">
-                  No real payment is made. This is only for testing your credit
-                  flow.
+                  After payment, your credits are added manually in the admin
+                  panel.
                 </p>
               </div>
             </div>
           ))}
         </div>
 
-        {/* FAQ-ish footer text */}
-        <div className="mt-10 grid md:grid-cols-3 gap-5 text-[11px] text-slate-400">
-          <div>
-            <h3 className="text-slate-200 font-semibold mb-1">
-              How do credits work?
-            </h3>
-            <p>
-              Each generation uses 1 credit by default. You can change the
-              “credits per request” logic in the backend and expose it in your
-              own UI however you like.
+        {/* Payment info */}
+        <div className="grid md:grid-cols-[2fr,1fr] gap-6 items-start">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 text-sm">
+            <h2 className="text-base font-semibold mb-2">
+              How payments work
+            </h2>
+            <ol className="list-decimal list-inside text-xs text-slate-300 space-y-1">
+              <li>Choose a plan (Starter / Pro / Agency).</li>
+              <li>Send payment using PayPal or bank wire.</li>
+              <li>
+                After payment is confirmed, you open the admin dashboard and
+                increase your customer&apos;s credits.
+              </li>
+            </ol>
+            <p className="mt-3 text-[11px] text-slate-500">
+              Later, you can integrate automatic webhooks and fully automate
+              top-ups. For now this simple flow is enough to start making
+              money.
             </p>
           </div>
-          <div>
-            <h3 className="text-slate-200 font-semibold mb-1">
-              Can I resell access?
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-sm">
+            <h3 className="text-sm font-semibold mb-2">
+              PayPal / bank details
             </h3>
-            <p>
-              Yes. BhaavAI is built for reselling. Attach this backend to your
-              own frontend, add Stripe or PayPal, and charge your customers
-              while we keep track of their usage.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-slate-200 font-semibold mb-1">
-              Can I change plans later?
-            </h3>
-            <p>
-              Absolutely. You can move between Starter, Pro, and Agency as your
-              usage grows. In production you&rsquo;ll map these plans to your
-              Stripe or payment provider.
-            </p>
+            <PaymentInfo />
           </div>
         </div>
       </section>
