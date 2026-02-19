@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type StoredUser = {
   userId: string;
@@ -9,79 +9,126 @@ type StoredUser = {
   credits: number;
 };
 
-const STORAGE_KEY = "ai_user";
-
 export default function DashboardPage() {
+  const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as StoredUser;
-        if (parsed.userId && parsed.email) {
-          setUser(parsed);
-        }
+      // Try both keys, depending on what you used earlier
+      const raw =
+        typeof window !== "undefined"
+          ? localStorage.getItem("ai-saas-user") ||
+            localStorage.getItem("user")
+          : null;
+
+      if (!raw) {
+        // Not logged in → go to login
+        router.replace("/login");
+        return;
       }
+
+      const parsed = JSON.parse(raw) as StoredUser;
+
+      if (!parsed?.userId || !parsed?.email) {
+        router.replace("/login");
+        return;
+      }
+
+      setUser(parsed);
     } catch (err) {
-      console.error("Failed to read user from localStorage", err);
+      console.error("Failed to read stored user:", err);
+      router.replace("/login");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem("ai-saas-user");
+      localStorage.removeItem("user");
+    } catch (e) {
+      console.error(e);
+    }
+    router.push("/login");
+  };
+
+  const goToGenerateText = () => {
+    router.push("/generate-text");
+  };
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#020617] flex items-center justify-center text-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#020617] text-slate-100">
         <p>Loading dashboard…</p>
-      </main>
+      </div>
     );
   }
 
   if (!user) {
-    return (
-      <main className="min-h-screen bg-[#020617] flex items-center justify-center text-white">
-        <div className="bg-slate-900/70 border border-slate-700 rounded-xl px-8 py-6 max-w-md w-full text-center">
-          <h1 className="text-2xl font-semibold mb-4">Not logged in</h1>
-          <p className="text-slate-300 mb-6">
-            We couldn&apos;t find your session in this browser. Please login again.
-          </p>
-          <Link
-            href="/login"
-            className="inline-block px-4 py-2 rounded-md bg-emerald-500 hover:bg-emerald-600 text-sm font-medium"
-          >
-            Go to Login
-          </Link>
-        </div>
-      </main>
-    );
+    return null; // redirect already triggered
   }
 
   return (
-    <main className="min-h-screen bg-[#020617] text-white flex items-center justify-center">
-      <div className="bg-slate-900/70 border border-slate-700 rounded-xl px-8 py-6 max-w-xl w-full">
-        <h1 className="text-2xl font-semibold mb-4">Dashboard</h1>
-        <p className="text-slate-300 mb-2">
-          <span className="font-medium">Email:</span> {user.email}
-        </p>
-        <p className="text-slate-300 mb-6">
-          <span className="font-medium">Credits:</span> {user.credits}
-        </p>
+    <div className="min-h-screen bg-[#020617] text-slate-100 flex items-center justify-center px-4">
+      <div className="w-full max-w-3xl rounded-2xl bg-[#020617] border border-slate-800 shadow-xl p-8 md:p-10">
+        {/* Header row */}
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+            Dashboard
+          </h1>
+          <button
+            onClick={handleLogout}
+            className="text-sm text-slate-300 hover:text-red-400 transition-colors"
+          >
+            Logout
+          </button>
+        </div>
 
-        <div className="space-y-3">
-          <p className="text-slate-400 text-sm">
+        {/* User info */}
+        <div className="space-y-2 mb-8">
+          <p className="text-sm text-slate-400">Email</p>
+          <p className="font-mono text-sm md:text-base break-all">
+            {user.email}
+          </p>
+
+          <p className="text-sm text-slate-400 mt-4">Credits</p>
+          <p className="text-lg font-semibold">{user.credits}</p>
+        </div>
+
+        {/* Actions */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <button
+            onClick={goToGenerateText}
+            className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-600 text-sm font-medium py-3 px-4 transition-colors"
+          >
+            ✨ Generate AI Text
+          </button>
+
+          <button
+            type="button"
+            className="w-full rounded-xl border border-slate-700 text-sm font-medium py-3 px-4 text-slate-200 hover:bg-slate-900 transition-colors"
+            // later you can link this to a "Buy credits" or "Payment request" page
+            onClick={() => alert("Top-up credits page coming soon 🙂")}
+          >
+            💳 Add More Credits (soon)
+          </button>
+        </div>
+
+        {/* Info block */}
+        <div className="mt-8 text-xs md:text-sm text-slate-400 space-y-1">
+          <p className="font-semibold text-slate-300">
             Here you will later see:
           </p>
-          <ul className="list-disc list-inside text-slate-300 text-sm space-y-1">
-            <li>Buttons to generate text / images / chatbots</li>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Buttons to generate images & chatbots</li>
             <li>Your recent AI orders</li>
             <li>Link to add more credits via payment request</li>
           </ul>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

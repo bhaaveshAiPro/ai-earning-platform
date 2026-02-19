@@ -211,12 +211,20 @@ app.post("/order", async (req, res) => {
 
     // Replace with real AI logic
     let result;
-    if (service === "image") {
+
+    if (service === "text") {
+      // ✨ Call your AI text generator
+      result = await generateText(prompt);
+    } else if (service === "image") {
+      // ✨ Call your AI image generator
       result = await generateImage(prompt);
     } else {
-      result = await generateText(prompt);
+      return res
+        .status(400)
+        .json({ status: "failed", message: "Unknown service type" });
     }
 
+    // Decrease credits
     user.credits = Number(user.credits) - 1;
     await user.save();
 
@@ -232,12 +240,14 @@ app.post("/order", async (req, res) => {
       status: "completed",
       result,
       orderId: order._id,
+      credits: user.credits,
     });
   } catch (err) {
     console.error("Order error:", err);
     return res.status(500).json({ status: "failed", message: "Server error" });
   }
 });
+
 
 // User order history
 app.get("/orders/user/:id", async (req, res) => {
