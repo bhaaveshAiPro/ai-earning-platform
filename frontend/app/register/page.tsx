@@ -1,30 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_CUSTOMER_API_URL ||
-  "https://ai-saas-platform-customer-production.up.railway.app";
+const API_BASE = process.env.NEXT_PUBLIC_CUSTOMER_API_URL || "";
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  async function handleRegister(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
-
-    if (!email || !password) {
-      setError("Please enter email and password.");
-      return;
-    }
+    setLoading(true);
 
     try {
-      setLoading(true);
+      if (!API_BASE) {
+        setError("Frontend API base URL is not set (NEXT_PUBLIC_CUSTOMER_API_URL).");
+        return;
+      }
 
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
@@ -34,90 +32,112 @@ export default function RegisterPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json().catch(() => ({}));
-      console.log("Register response:", data); // <-- useful in DevTools
+      const data = await res.json().catch(() => ({} as any));
+      console.log("Register response:", data);
 
-      // If HTTP error or backend status != ok
-      if (!res.ok || data.status !== "ok") {
-        const msg =
-          data?.message ||
-          "Registration failed. Please check your details and try again.";
-        setError(msg);
+      if (!res.ok) {
+        setError(data?.message || "Server returned an error.");
         return;
       }
 
       if (!data.userId) {
-        // This SHOULD NOT happen with our backend, but just in case:
-        setError("Registration succeeded but user id was missing from backend.");
+        // this is the message you were seeing
+        setError("Backend did not return user id (userId). Check API response shape.");
         return;
       }
 
-      // ✅ Success
-      setSuccess("Account created! You can now log in.");
-      // You can also redirect here if you want:
-      // window.location.href = "/login";
+      // Save user in localStorage (simple session)
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          "ai-saas-user",
+          JSON.stringify({
+            userId: data.userId,
+            email: data.email,
+            credits: data.credits ?? 0,
+          })
+        );
+      }
 
+      // Redirect to app/dashboard
+      router.push("/app");
     } catch (err: any) {
       console.error("Register error:", err);
-      setError("Network error contacting backend.");
+      setError("Network error connecting to API.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-      <div className="w-full max-w-md rounded-2xl bg-slate-800 p-8 shadow-lg">
-        <h1 className="text-xl font-semibold mb-6">Create Account</h1>
+    <main className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
+      <div className="w-full max-w-md rounded-2xl bg-slate-900/80 border border-slate-800 p-8 shadow-xl">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-xl font-semibold">Create Account</h1>
+          <a href="/" className="text-sm text-slate-400 hover:text-slate-200">
+            Home
+          </a>
+        </div>
 
-        <form onSubmit={handleRegister} className="space-y-4">
-          <div>
-            <label className="block text-sm mb-1">Email</label>
+        <div className="flex mb-6 space-x-2">
+          <a
+            href="/auth/login"
+            className="flex-1 py-2 text-center rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-sm"
+          >
+            Login
+          </a>
+          <button
+            className="flex-1 py-2 text-center rounded-lg bg-emerald-600 text-white text-sm"
+            type="button"
+          >
+            Register
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-sm text-slate-300">Email</label>
             <input
               type="email"
-              className="w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
+              required
+              placeholder="you@mail.com"
             />
           </div>
 
-          <div>
-            <label className="block text-sm mb-1">Password</label>
+          <div className="space-y-1">
+            <label className="text-sm text-slate-300">Password</label>
             <input
               type="password"
-              className="w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
+              required
+              placeholder="••••••••"
             />
           </div>
-
-          {error && (
-            <p className="text-sm text-red-400 flex items-center gap-1">
-              ❌ {error}
-            </p>
-          )}
-
-          {success && (
-            <p className="text-sm text-emerald-400 flex items-center gap-1">
-              ✅ {success}
-            </p>
-          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-emerald-500 hover:bg-emerald-600 py-2 text-sm font-medium disabled:opacity-60"
+            className="w-full mt-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-sm font-medium"
           >
             {loading ? "Creating account..." : "Register"}
           </button>
         </form>
 
-        <p className="mt-4 text-[11px] text-slate-400">
-          API: {API_BASE}
+        {error && (
+          <p className="mt-4 text-sm text-red-400 flex items-center space-x-2">
+            <span>✖</span>
+            <span>{error}</span>
+          </p>
+        )}
+
+        <p className="mt-4 text-xs text-slate-500">
+          API: {API_BASE || "NOT SET"}
         </p>
       </div>
-    </div>
+    </main>
   );
 }
