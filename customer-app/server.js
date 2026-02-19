@@ -12,22 +12,28 @@ const app = express();
 app.use(express.json());
 
 // ------------------------------
-// CORS (fix Vercel ↔ Railway)
+// CORS (Vercel ↔ Railway)
+// Set in Railway (customer service):
+// CORS_ORIGINS=https://ai-earning-platform-psi.vercel.app,http://localhost:3000
 // ------------------------------
-const allowedOrigin = process.env.CORS_ORIGIN; // e.g. https://ai-earning-platform-psi.vercel.app
+const allowedOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const clean = (s) => String(s || "").replace(/\/$/, "");
 
 app.use(
   cors({
     origin: (origin, cb) => {
-      // allow server-to-server / curl / postman
+      // allow server-to-server, Postman, curl
       if (!origin) return cb(null, true);
       if (!allowedOrigin) return cb(null, true);
 
-      // normalize trailing slash issue
-      const clean = (s) => String(s).replace(/\/$/, "");
-      if (clean(origin) === clean(allowedOrigin)) return cb(null, true);
+      const ok = allowedOrigins.some((o) => clean(o) === clean(origin));
+      if (ok) return cb(null, true);
 
-      return cb(new Error("CORS blocked: " + origin));
+      return cb(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -39,12 +45,15 @@ app.use(
 app.options("*", cors());
 
 // ------------------------------
-// Mongo
+// Mongo connect
 // ------------------------------
 const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) console.error("❌ MONGO_URI is not set");
 
-async function connectDb() {
+async function connectMongo() {
+  if (!MONGO_URI) {
+    console.error("❌ MONGO_URI is not set");
+    return;
+  }
   try {
     await mongoose.connect(MONGO_URI);
     console.log("✅ Connected to MongoDB");
@@ -130,6 +139,7 @@ app.post("/auth/register", async (req, res) => {
     }
 
     const user = await User.create({ email, password, credits: 20 });
+
     return res.json({
       status: "ok",
       userId: user._id,
@@ -190,7 +200,7 @@ app.get("/auth/user/:id", async (req, res) => {
   }
 });
 
-// Create order (demo endpoint)
+// Create order
 app.post("/order", async (req, res) => {
   try {
     const { service, prompt, userId } = req.body || {};
@@ -203,13 +213,15 @@ app.post("/order", async (req, res) => {
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ status: "failed", message: "User not found" });
+      return res
+        .status(404)
+        .json({ status: "failed", message: "User not found" });
     }
     if (user.credits <= 0) {
       return res.status(403).json({ status: "failed", message: "No credits" });
     }
 
-    // Fake result (replace with your AI logic)
+    // Replace with real AI later
     const result =
       service === "image"
         ? "https://via.placeholder.com/512?text=AI+Image"
@@ -243,6 +255,7 @@ app.get("/orders/user/:id", async (req, res) => {
     const orders = await Order.find({ userId: req.params.id })
       .sort({ date: -1 })
       .limit(50);
+
     return res.json({ status: "ok", orders });
   } catch (err) {
     console.error("Orders error:", err);
@@ -313,10 +326,10 @@ app.post("/payments/request", async (req, res) => {
 });
 
 // ------------------------------
-// Start
+// Start server (ONLY ONCE)
 // ------------------------------
 (async () => {
-  await connectDb();
+  await connectMongo();
   const PORT = process.env.PORT || 3002;
   app.listen(PORT, () => console.log("🟢 Customer API on port", PORT));
 })();

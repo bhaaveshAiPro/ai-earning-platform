@@ -10,24 +10,24 @@ const app = express();
 app.use(express.json());
 
 // ------------------------------
-// CORS (IMPORTANT: no trailing slash in origins)
-// Set CORS_ORIGINS in Railway like:
-// https://ai-earning-platform-psi.vercel.app,http://localhost:3000
+// CORS
+// Set in Railway (admin service):
+// CORS_ORIGINS=https://ai-earning-platform-psi.vercel.app,http://localhost:3000
 // ------------------------------
 const allowedOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
+const clean = (s) => String(s || "").replace(/\/$/, "");
+
 app.use(
   cors({
     origin: (origin, cb) => {
       // allow server-to-server / curl (no origin)
       if (!origin) return cb(null, true);
-
-      // allow if in list
-      if (allowedOrigins.includes(origin)) return cb(null, true);
-
+      const ok = allowedOrigins.some((o) => clean(o) === clean(origin));
+      if (ok) return cb(null, true);
       return cb(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
@@ -40,7 +40,7 @@ app.use(
 app.options("*", cors());
 
 // ------------------------------
-// Mongo
+// Mongo connect
 // ------------------------------
 const MONGO_URI = process.env.MONGO_URI;
 
@@ -58,7 +58,7 @@ async function connectMongo() {
 }
 
 // ------------------------------
-// Admin Secret Key middleware
+// Admin key middleware
 // ------------------------------
 function requireAdminKey(req, res, next) {
   const key = req.header("X-ADMIN-KEY");
@@ -72,16 +72,17 @@ function requireAdminKey(req, res, next) {
   }
 
   if (!key || key !== expected) {
-    return res
-      .status(401)
-      .json({ status: "error", message: "Unauthorized (missing/invalid admin key)" });
+    return res.status(401).json({
+      status: "error",
+      message: "Unauthorized (missing/invalid admin key)",
+    });
   }
 
   next();
 }
 
 // ------------------------------
-// Schemas & models
+// Models (must match customer)
 // ------------------------------
 const UserSchema = new mongoose.Schema(
   {
@@ -133,22 +134,18 @@ const PaymentRequest =
   mongoose.model("PaymentRequest", PaymentRequestSchema);
 
 // ------------------------------
-// Public routes
+// Public route
 // ------------------------------
-app.get("/", (req, res) => {
-  res.send("Admin API is running");
-});
+app.get("/", (req, res) => res.send("Admin API is running"));
 
 // ------------------------------
-// Protected admin routes
-// Everything under /admin requires X-ADMIN-KEY
+// Protect everything under /admin
 // ------------------------------
 app.use("/admin", requireAdminKey);
 
-// Admin login (still protected by admin key + email/password)
+// Admin login (still requires admin key + creds)
 app.post("/admin/login", (req, res) => {
-  const { email, password } = req.body;
-
+  const { email, password } = req.body || {};
   if (
     email === process.env.ADMIN_EMAIL &&
     password === process.env.ADMIN_PASSWORD
@@ -176,15 +173,14 @@ app.get("/admin/users", async (req, res) => {
   }
 });
 
-// Set a user's credits
+// Set credits
 app.post("/admin/users/set-credits", async (req, res) => {
   try {
-    const { userId, credits } = req.body;
-
+    const { userId, credits } = req.body || {};
     if (!userId || credits === undefined) {
       return res
         .status(400)
-        .json({ status: "error", message: "userId and credits are required" });
+        .json({ status: "error", message: "userId and credits required" });
     }
 
     const user = await User.findById(userId);
@@ -211,7 +207,7 @@ app.post("/admin/users/set-credits", async (req, res) => {
   }
 });
 
-// List recent orders
+// Orders
 app.get("/admin/orders", async (req, res) => {
   try {
     const orders = await Order.find({}).sort({ date: -1 }).limit(50);
@@ -224,14 +220,75 @@ app.get("/admin/orders", async (req, res) => {
   }
 });
 
+// Optional: list payment requests
+app.get("/admin/payments/requests", async (req, res) => {
+  try {
+    const requests = await PaymentRequest.find({})
+      .sort({ createdAt: -1 })
+      .limit(100);
+    return res.json({ status: "ok", requests });
+  } catch (err) {
+    console.error("Error in GET /admin/payments/requests:", err);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  }
+});
+
+// Optional: approve payment request + add credits
+app.post("/admin/payments/approve", async (req, res) => {
+  try {
+    const { requestId, creditsToAdd, adminNote } = req.body || {};
+    if (!requestId || creditsToAdd === undefined) {
+      return res.status(400).json({
+        status: "error",
+        message: "requestId and creditsToAdd required",
+      });
+    }
+
+    const pr = await PaymentRequest.findById(requestId);
+    if (!pr) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Payment request not found" });
+    }
+
+    const user = await User.findById(pr.userId);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "User not found" });
+    }
+
+    const add = Number(creditsToAdd);
+    user.credits = Number(user.credits || 0) + (Number.isFinite(add) ? add : 0);
+    await user.save();
+
+    pr.status = "approved";
+    pr.creditsToAdd = add;
+    pr.adminNote = adminNote || "";
+    pr.processedAt = new Date();
+    await pr.save();
+
+    return res.json({
+      status: "ok",
+      message: "Approved & credits added",
+      userId: user._id,
+      newCredits: user.credits,
+    });
+  } catch (err) {
+    console.error("Approve payment error:", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
+  }
+});
+
 // ------------------------------
-// Start
+// Start server (ONLY ONCE)
 // ------------------------------
 const PORT = process.env.PORT || 3003;
 
 (async () => {
   await connectMongo();
-  app.listen(PORT, () => {
-    console.log(`🛠 Admin backend running on port ${PORT}`);
-  });
+  const PORT = process.env.PORT || 3003;
+  app.listen(PORT, () => console.log("🟣 Admin API on port", PORT));
 })();
