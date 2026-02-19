@@ -44,7 +44,7 @@ export default function LoginPage() {
 
       if (!userId) {
         setError(
-          "Backend did not return user id (login). Check console for raw payload."
+          ""
         );
         return;
       }
