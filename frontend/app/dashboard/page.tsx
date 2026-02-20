@@ -108,12 +108,14 @@ export default function DashboardPage() {
           </button>
 
           <button
-            type="button"
-            className="w-full rounded-xl border border-slate-700 text-sm font-medium py-3 px-4 text-slate-200 hover:bg-slate-900 transition-colors"
-            // later you can link this to a "Buy credits" or "Payment request" page
-            onClick={() => alert("Top-up credits page coming soon 🙂")}
-          >
-            💳 Add More Credits (soon)
+           type="button"
+           onClick={() => router.push("/add-credits")}
+           className="flex items-center justify-center gap-2 rounded-xl border border-slate-700 text-sm font-medium py-3 px-4 text-slate-200 hover:bg-slate-900 transition-colors"
+>
+           <span role="img" aria-label="card">
+           💳
+          </span>
+           Add More Credits
           </button>
         </div>
 
