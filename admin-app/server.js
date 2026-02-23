@@ -1,4 +1,7 @@
-// deploy: cors update
+// admin/server.js
+// --------------------
+// Admin backend with payment approval
+// --------------------
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -11,9 +14,9 @@ app.use(express.json());
 
 // ------------------------------
 // CORS
-// Set in Railway (admin service):
-// CORS_ORIGINS=https://ai-earning-platform-psi.vercel.app,http://localhost:3000
 // ------------------------------
+// In Railway admin service variables you already set:
+// CORS_ORIGINS = https://ai-earning-platform-psi.vercel.app
 const allowedOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
@@ -24,10 +27,8 @@ const clean = (s) => String(s || "").replace(/\/$/, "");
 app.use(
   cors({
     origin: (origin, cb) => {
-      // allow server-to-server / curl (no origin)
-      if (!origin) return cb(null, true);
-      const ok = allowedOrigins.some((o) => clean(o) === clean(origin));
-      if (ok) return cb(null, true);
+      if (!origin) return cb(null, true); // server-to-server, Postman etc.
+      if (allowedOrigins.includes(origin)) return cb(null, true);
       return cb(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
@@ -36,11 +37,11 @@ app.use(
   })
 );
 
-// Railway/Browser preflight
+// Preflight
 app.options("*", cors());
 
 // ------------------------------
-// Mongo connect
+// Mongo connection
 // ------------------------------
 const MONGO_URI = process.env.MONGO_URI;
 
@@ -51,9 +52,9 @@ async function connectMongo() {
   }
   try {
     await mongoose.connect(MONGO_URI);
-    console.log("✅ Connected to MongoDB");
+    console.log("✅ [ADMIN] Connected to MongoDB");
   } catch (err) {
-    console.error("❌ MongoDB connection failed:", err.message);
+    console.error("❌ [ADMIN] MongoDB connection failed:", err.message);
   }
 }
 
@@ -68,21 +69,20 @@ function requireAdminKey(req, res, next) {
     console.error("❌ ADMIN_API_KEY is not set on server");
     return res
       .status(500)
-      .json({ status: "error", message: "Server misconfigured" });
+      .json({ status: "error", message: "Server misconfigured (no admin key)" });
   }
 
   if (!key || key !== expected) {
-    return res.status(401).json({
-      status: "error",
-      message: "Unauthorized (missing/invalid admin key)",
-    });
+    return res
+      .status(401)
+      .json({ status: "error", message: "Unauthorized (missing/invalid admin key)" });
   }
 
   next();
 }
 
 // ------------------------------
-// Models (must match customer)
+// Schemas & models
 // ------------------------------
 const UserSchema = new mongoose.Schema(
   {
@@ -119,7 +119,7 @@ const PaymentRequestSchema = new mongoose.Schema(
     transactionId: { type: String, default: "" },
     note: { type: String, default: "" },
 
-    status: { type: String, default: "pending" },
+    status: { type: String, default: "pending" }, // pending | approved | rejected
     adminNote: { type: String, default: "" },
     creditsToAdd: { type: Number, default: 0 },
     processedAt: { type: Date, default: null },
@@ -136,16 +136,19 @@ const PaymentRequest =
 // ------------------------------
 // Public route
 // ------------------------------
-app.get("/", (req, res) => res.send("Admin API is running"));
+app.get("/", (req, res) => {
+  res.send("Admin API is running");
+});
 
 // ------------------------------
-// Protect everything under /admin
+// Protected admin routes
 // ------------------------------
 app.use("/admin", requireAdminKey);
 
-// Admin login (still requires admin key + creds)
+// ---- Admin login (optional – already had this) ----
 app.post("/admin/login", (req, res) => {
-  const { email, password } = req.body || {};
+  const { email, password } = req.body;
+
   if (
     email === process.env.ADMIN_EMAIL &&
     password === process.env.ADMIN_PASSWORD
@@ -158,7 +161,7 @@ app.post("/admin/login", (req, res) => {
     .json({ status: "error", message: "Invalid admin credentials" });
 });
 
-// List all users
+// ---- Users list ----
 app.get("/admin/users", async (req, res) => {
   try {
     const users = await User.find({})
@@ -173,14 +176,15 @@ app.get("/admin/users", async (req, res) => {
   }
 });
 
-// Set credits
+// ---- Set user credits ----
 app.post("/admin/users/set-credits", async (req, res) => {
   try {
-    const { userId, credits } = req.body || {};
+    const { userId, credits } = req.body;
+
     if (!userId || credits === undefined) {
       return res
         .status(400)
-        .json({ status: "error", message: "userId and credits required" });
+        .json({ status: "error", message: "userId and credits are required" });
     }
 
     const user = await User.findById(userId);
@@ -207,7 +211,7 @@ app.post("/admin/users/set-credits", async (req, res) => {
   }
 });
 
-// Orders
+// ---- Orders list ----
 app.get("/admin/orders", async (req, res) => {
   try {
     const orders = await Order.find({}).sort({ date: -1 }).limit(50);
@@ -220,37 +224,55 @@ app.get("/admin/orders", async (req, res) => {
   }
 });
 
-// Optional: list payment requests
-app.get("/admin/payments/requests", async (req, res) => {
+// ------------------------------
+// NEW: Payment Requests Admin API
+// ------------------------------
+
+// List payment requests (optionally by status)
+app.get("/admin/payment-requests", async (req, res) => {
   try {
-    const requests = await PaymentRequest.find({})
+    const { status } = req.query;
+    const query = {};
+    if (status) query.status = status;
+
+    const requests = await PaymentRequest.find(query)
       .sort({ createdAt: -1 })
       .limit(100);
+
     return res.json({ status: "ok", requests });
   } catch (err) {
-    console.error("Error in GET /admin/payments/requests:", err);
+    console.error("Error in GET /admin/payment-requests:", err);
     return res
       .status(500)
       .json({ status: "error", message: "Internal server error" });
   }
 });
 
-// Optional: approve payment request + add credits
-app.post("/admin/payments/approve", async (req, res) => {
+// Approve a payment request: add credits to the user
+app.post("/admin/payment-requests/:id/approve", async (req, res) => {
   try {
-    const { requestId, creditsToAdd, adminNote } = req.body || {};
-    if (!requestId || creditsToAdd === undefined) {
-      return res.status(400).json({
-        status: "error",
-        message: "requestId and creditsToAdd required",
-      });
-    }
+    const { id } = req.params;
+    const { creditsToAdd, adminNote } = req.body || {};
 
-    const pr = await PaymentRequest.findById(requestId);
+    const pr = await PaymentRequest.findById(id);
     if (!pr) {
       return res
         .status(404)
         .json({ status: "error", message: "Payment request not found" });
+    }
+
+    if (pr.status !== "pending") {
+      return res.status(400).json({
+        status: "error",
+        message: `Request is already ${pr.status}`,
+      });
+    }
+
+    const credits = Number(creditsToAdd);
+    if (!Number.isFinite(credits) || credits <= 0) {
+      return res
+        .status(400)
+        .json({ status: "error", message: "Invalid creditsToAdd" });
     }
 
     const user = await User.findById(pr.userId);
@@ -260,35 +282,75 @@ app.post("/admin/payments/approve", async (req, res) => {
         .json({ status: "error", message: "User not found" });
     }
 
-    const add = Number(creditsToAdd);
-    user.credits = Number(user.credits || 0) + (Number.isFinite(add) ? add : 0);
+    user.credits = Number(user.credits || 0) + credits;
     await user.save();
 
     pr.status = "approved";
-    pr.creditsToAdd = add;
+    pr.creditsToAdd = credits;
     pr.adminNote = adminNote || "";
     pr.processedAt = new Date();
     await pr.save();
 
     return res.json({
       status: "ok",
-      message: "Approved & credits added",
-      userId: user._id,
-      newCredits: user.credits,
+      message: "Payment request approved and credits added",
+      user: { id: user._id, email: user.email, credits: user.credits },
+      paymentRequest: pr,
     });
   } catch (err) {
-    console.error("Approve payment error:", err);
-    return res.status(500).json({ status: "error", message: "Server error" });
+    console.error("Error in POST /admin/payment-requests/:id/approve:", err);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  }
+});
+
+// Reject a payment request
+app.post("/admin/payment-requests/:id/reject", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { adminNote } = req.body || {};
+
+    const pr = await PaymentRequest.findById(id);
+    if (!pr) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Payment request not found" });
+    }
+
+    if (pr.status !== "pending") {
+      return res.status(400).json({
+        status: "error",
+        message: `Request is already ${pr.status}`,
+      });
+    }
+
+    pr.status = "rejected";
+    pr.adminNote = adminNote || "";
+    pr.processedAt = new Date();
+    await pr.save();
+
+    return res.json({
+      status: "ok",
+      message: "Payment request rejected",
+      paymentRequest: pr,
+    });
+  } catch (err) {
+    console.error("Error in POST /admin/payment-requests/:id/reject:", err);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
   }
 });
 
 // ------------------------------
-// Start server (ONLY ONCE)
+// Start server
 // ------------------------------
 const PORT = process.env.PORT || 3003;
 
 (async () => {
   await connectMongo();
-  const PORT = process.env.PORT || 3003;
-  app.listen(PORT, () => console.log("🟣 Admin API on port", PORT));
+  app.listen(PORT, () => {
+    console.log(`🛠 Admin backend running on port ${PORT}`);
+  });
 })();
